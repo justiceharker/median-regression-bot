@@ -1,0 +1,2 @@
+rich>=13.0.0
+kalshi_python_sync>=0.1.0
