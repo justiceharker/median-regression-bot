@@ -16,6 +16,13 @@ ENV/
 # Logs and data
 *.log
 trading_log.csv
+simulated_trades.csv
+
+# Secrets and credentials
+kalshi_key.pem
+.env
+.env.local
+.env.*.local
 
 # Distribution / packaging
 build/
