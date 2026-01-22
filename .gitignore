@@ -1,0 +1,23 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env
+
+# VS Code
+.vscode/
+
+# Logs and data
+*.log
+trading_log.csv
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
