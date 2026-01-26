@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.live import Live
 from rich.table import Table
+from rich.console import Group
 
 # Load environment variables from .env file
 load_dotenv()
@@ -40,7 +41,7 @@ MAX_LOSS_PER_TRADE = 0.12
 TIME_BASED_STOP_LOSS = 2700  # 45 min
 BREAK_EVEN_TIMER = 1800      # 30 min
 
-console = Console()
+console = Console(force_terminal=True, legacy_windows=False, width=160)
 
 # Global flag for manual sell trigger
 manual_sell_requested = False
@@ -52,7 +53,7 @@ def listen_for_input():
     import sys
     import select
     
-    console.print("[dim]💡 Keyboard shortcuts: 's'=sell all, 'c'=cancel orders, 'q'=quit[/dim]")
+    console.print("[dim]Keyboard shortcuts: s=sell all, c=cancel orders, q=quit[/dim]")
     
     # On Windows, use a simpler approach
     if sys.platform == 'win32':
@@ -63,7 +64,7 @@ def listen_for_input():
                     key = msvcrt.getch().decode('utf-8').lower()
                     if key == 's':
                         manual_sell_requested = True
-                        console.print("[yellow]🔔 Manual sell requested for all positions[/yellow]")
+                        console.print("[yellow]>> Manual sell requested for all positions[/yellow]")
                     elif key == 'c':
                         # Cancel all open orders
                         open_orders = get_all_open_orders()
@@ -72,7 +73,7 @@ def listen_for_input():
                             order_id = getattr(order, 'order_id', None)
                             if order_id and cancel_order(order_id):
                                 canceled += 1
-                        console.print(f"[yellow]❌ Canceled {canceled}/{len(open_orders)} orders[/yellow]")
+                        console.print(f"[yellow]X Canceled {canceled}/{len(open_orders)} orders[/yellow]")
                     elif key == 'q':
                         console.print("[yellow]Exiting...[/yellow]")
                         break
@@ -86,7 +87,7 @@ def listen_for_input():
                 user_input = input().strip().lower()
                 if user_input == 's':
                     manual_sell_requested = True
-                    console.print("[yellow]🔔 Manual sell requested for all positions[/yellow]")
+                    console.print("[yellow]>> Manual sell requested for all positions[/yellow]")
                 elif user_input == 'c':
                     open_orders = get_all_open_orders()
                     canceled = 0
@@ -94,7 +95,7 @@ def listen_for_input():
                         order_id = getattr(order, 'order_id', None)
                         if order_id and cancel_order(order_id):
                             canceled += 1
-                    console.print(f"[yellow]❌ Canceled {canceled}/{len(open_orders)} orders[/yellow]")
+                    console.print(f"[yellow]X Canceled {canceled}/{len(open_orders)} orders[/yellow]")
                 elif user_input == 'q':
                     console.print("[yellow]Exiting...[/yellow]")
                     break
@@ -114,7 +115,7 @@ try:
         config.api_key_id = KEY_ID
     config.private_key_pem = private_key
     client = KalshiClient(config)
-    console.print("[green]✓ Kalshi client initialized[/green]")
+    console.print("[green]OK Kalshi client initialized[/green]")
 except Exception as e:
     console.print(f"[yellow]Warning: Kalshi client not configured: {e}[/yellow]")
 
@@ -252,10 +253,10 @@ def log_new_position(ticker, title, entry, shares):
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
         writer.writerow([timestamp, ticker, title, f"${entry:.2f}", "---", "0.0%", f"NEW POSITION ({shares} shares)"])
     
-    console.print(f"\n[bold green]🎉 NEW POSITION DETECTED![/bold green]")
-    console.print(f"[cyan]📊 {title}[/cyan]")
-    console.print(f"[white]💰 Entry: ${entry:.2f} | Shares: {shares}[/white]")
-    console.print(f"[dim]🎫 Ticker: {ticker}[/dim]\n")
+    console.print(f"\n[bold green]NEW POSITION DETECTED![/bold green]")
+    console.print(f"[cyan]{title}[/cyan]")
+    console.print(f"[white]Entry: ${entry:.2f} | Shares: {shares}[/white]")
+    console.print(f"[dim]ker: {ticker}[/dim]\n")
 
 
 def execute_order(ticker, shares, reason, action="sell"):
@@ -270,7 +271,7 @@ def execute_order(ticker, shares, reason, action="sell"):
     - Sell/Short: Sell YES at bid price (creates short)
     """
     if client is None:
-        console.print(f"[red]❌ No Kalshi client available[/red]")
+        console.print(f"[red]X No Kalshi client available[/red]")
         return False
     try:
         # Get market data
@@ -305,7 +306,7 @@ def execute_order(ticker, shares, reason, action="sell"):
         
         # Log successful order
         order_id = getattr(order, 'order_id', 'UNKNOWN')
-        console.print(f"[green]✅ LIVE {action_str} {ticker} {shares} @ ${yes_price} — {reason}[/green]")
+        console.print(f"[green]LIVE {action_str} {ticker} {shares} @ ${yes_price} — {reason}[/green]")
         
         # Log to file
         with open("successful_orders.log", "a") as f:
@@ -397,34 +398,45 @@ def generate_dashboard(rows):
     account_balance = get_account_balance()
     open_orders = get_all_open_orders()
     
+    # Get all markets to identify pending outcomes
+    pending_markets = []
+    try:
+        if client:
+            markets = client.get_markets()
+            for market in markets:
+                if hasattr(market, 'status') and market.status == 'PENDING':
+                    pending_markets.append(market)
+    except:
+        pass
+    
     # Dynamic color based on performance
     if all_pnl >= 20:
         p_color = "bold green"
-        perf_emoji = "🚀"
+        perf_emoji = "^"
     elif all_pnl >= 10:
         p_color = "green"
-        perf_emoji = "📈"
+        perf_emoji = "+"
     elif all_pnl >= 0:
         p_color = "green"
-        perf_emoji = "✅"
+        perf_emoji = "OK"
     elif all_pnl >= -10:
         p_color = "yellow"
-        perf_emoji = "⚠️"
+        perf_emoji = "!"
     else:
         p_color = "red"
-        perf_emoji = "🔻"
+        perf_emoji = "v"
     
     total_trades = len(rows)
     profitable = sum(1 for r in rows if r['pnl'] > 0)
     
     # Build comprehensive header
     balance_str = f"${account_balance:.2f}" if account_balance else "N/A"
-    orders_str = f"Orders: {len(open_orders)}"
+    orders_str = f"Resting Orders: {len(open_orders)} | Pending Markets: {len(pending_markets)}"
     
-    stats_header = f"[cyan bold]⚡ LIVE[/cyan bold] | PnL: [{p_color}]{all_pnl:+.2f}%[/{p_color}] | Win: [cyan]{win_rate:.1f}%[/cyan] | Profit: [green]{profitable}[/green]/[dim]{total_trades}[/dim] | Bal: {balance_str} | {orders_str}"
+    stats_header = f"[cyan bold]LIVE[/cyan bold] | PnL: [{p_color}]{all_pnl:+.2f}%[/{p_color}] | Win: [cyan]{win_rate:.1f}%[/cyan] | Profit: [green]{profitable}[/green]/[dim]{total_trades}[/dim] | Bal: {balance_str} | {orders_str}"
     
     table = Table(
-        title="📊 MEDIAN REGRESSION BOT 📊",
+        title="MEDIAN REGRESSION BOT - ACTIVE POSITIONS",
         title_style="bold white on blue",
         border_style="bright_blue",
         header_style="bold cyan",
@@ -467,7 +479,105 @@ def generate_dashboard(rows):
             r['status']
         )
     
-    return Panel(table, title=stats_header, border_style="blue", padding=(0, 1))
+    # Build output with positions table and additional sections
+    output = Panel(table, title=stats_header, border_style="blue", padding=(0, 1))
+    tables_list = [output]
+    
+    # Add resting orders section if there are any
+    if open_orders and len(open_orders) > 0:
+        orders_table = Table(
+            title="RESTING ORDERS",
+            title_style="bold white on yellow",
+            border_style="bright_yellow",
+            header_style="bold yellow",
+            show_lines=False,
+            expand=False,
+            padding=(0, 1)
+        )
+        
+        orders_table.add_column("Market", style="bold yellow", width=26)
+        orders_table.add_column("Action", justify="center", style="cyan", width=8)
+        orders_table.add_column("Shares", justify="right", width=7)
+        orders_table.add_column("Price $", justify="right", width=8)
+        orders_table.add_column("Order ID", style="dim", width=20)
+        
+        for order in open_orders[:10]:  # Show max 10 orders
+            try:
+                ticker = getattr(order, 'ticker', 'N/A')
+                action = getattr(order, 'action', 'N/A')
+                side = getattr(order, 'side', 'YES')
+                quantity = getattr(order, 'quantity', 0)
+                yes_price = getattr(order, 'yes_price_dollars', 0)
+                no_price = getattr(order, 'no_price_dollars', 0)
+                order_id = getattr(order, 'order_id', 'N/A')[:8] + "..." if hasattr(order, 'order_id') else "N/A"
+                
+                # Determine display price
+                display_price = yes_price if yes_price > 0 else no_price
+                action_display = f"{action.upper()}"
+                
+                orders_table.add_row(
+                    f"{ticker[:26]}",
+                    action_display,
+                    f"{quantity}",
+                    f"${display_price:.2f}" if display_price > 0 else "N/A",
+                    order_id
+                )
+            except Exception as e:
+                continue
+        
+        tables_list.append(orders_table)
+    
+    # Add outcome pending section if there are any
+    if pending_markets and len(pending_markets) > 0:
+        pending_table = Table(
+            title="OUTCOME PENDING",
+            title_style="bold white on magenta",
+            border_style="bright_magenta",
+            header_style="bold magenta",
+            show_lines=False,
+            expand=False,
+            padding=(0, 1)
+        )
+        
+        pending_table.add_column("Event", style="bold magenta", width=30)
+        pending_table.add_column("Close Time", justify="center", style="cyan", width=16)
+        pending_table.add_column("Yes Price", justify="right", width=8)
+        
+        for market in pending_markets[:15]:  # Show max 15 pending markets
+            try:
+                title = getattr(market, 'title', 'N/A')[:30]
+                close_date = getattr(market, 'close_date', None)
+                yes_bid = getattr(market, 'yes_bid_dollars', 0)
+                yes_ask = getattr(market, 'yes_ask_dollars', 0)
+                
+                # Format close time
+                if close_date:
+                    try:
+                        close_time = datetime.datetime.fromisoformat(close_date.replace('Z', '+00:00'))
+                        time_str = close_time.strftime("%m/%d %H:%M")
+                    except:
+                        time_str = "N/A"
+                else:
+                    time_str = "N/A"
+                
+                # Average price
+                avg_price = (yes_bid + yes_ask) / 2 if yes_bid > 0 and yes_ask > 0 else 0
+                
+                pending_table.add_row(
+                    title,
+                    time_str,
+                    f"${avg_price:.2f}" if avg_price > 0 else "N/A"
+                )
+            except Exception as e:
+                continue
+        
+        tables_list.append(pending_table)
+    
+    # Combine all tables
+    if len(tables_list) > 1:
+        return Group(*tables_list)
+    
+    return output
 
 
 def main_loop():
@@ -590,9 +700,9 @@ def main_loop():
                     
                     # Determine status with momentum indicator
                     if abs(dev_pct) >= DEVIATION_THRESHOLD_PCT:
-                        status = "[bold yellow]⚠️ THRESHOLD[/bold yellow]" if dev_pct < 0 else "[bold green]✓ READY[/bold green]"
+                        status = "[bold yellow]! THRESHOLD[/bold yellow]" if dev_pct < 0 else "[bold green]OK READY[/bold green]"
                     else:
-                        status = "[cyan]📡 Tracking[/cyan]"
+                        status = "[cyan]~ Tracking[/cyan]"
                     
                     rows.append({
                         "ticker": ticker,
