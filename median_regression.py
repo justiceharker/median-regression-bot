@@ -392,7 +392,7 @@ def should_execute_stop(ticker, current_bid, entry, hold_time):
 
 
 def generate_dashboard(rows):
-    """Creates a detailed Rich Table dashboard with statistics."""
+    """Creates a detailed Rich Table dashboard with comprehensive market statistics."""
     all_pnl, win_rate = get_stats()
     account_balance = get_account_balance()
     open_orders = get_all_open_orders()
@@ -414,15 +414,14 @@ def generate_dashboard(rows):
         p_color = "red"
         perf_emoji = "🔻"
     
-    mode_indicator = "[cyan bold]⚡ LIVE MODE[/cyan bold]"
     total_trades = len(rows)
     profitable = sum(1 for r in rows if r['pnl'] > 0)
     
-    # Build header with account info
-    balance_str = f"Balance: ${account_balance:.2f}" if account_balance else "Balance: N/A"
-    orders_str = f"Open Orders: {len(open_orders)}"
+    # Build comprehensive header
+    balance_str = f"${account_balance:.2f}" if account_balance else "N/A"
+    orders_str = f"Orders: {len(open_orders)}"
     
-    stats_header = f"{mode_indicator}  |  {perf_emoji} PnL: [{p_color}]{all_pnl:+.1f}%[/{p_color}]  |  Win Rate: [cyan]{win_rate:.1f}%[/cyan]  |  Positions: [green]{profitable}[/green]/[dim]{total_trades}[/dim]  |  {balance_str}  |  {orders_str}"
+    stats_header = f"[cyan bold]⚡ LIVE[/cyan bold] | PnL: [{p_color}]{all_pnl:+.2f}%[/{p_color}] | Win: [cyan]{win_rate:.1f}%[/cyan] | Profit: [green]{profitable}[/green]/[dim]{total_trades}[/dim] | Bal: {balance_str} | {orders_str}"
     
     table = Table(
         title="📊 MEDIAN REGRESSION BOT 📊",
@@ -434,37 +433,41 @@ def generate_dashboard(rows):
         padding=(0, 1)
     )
     
-    table.add_column("Market", style="bold cyan", width=20)
-    table.add_column("Entry", justify="right", style="white", width=9)
-    table.add_column("Median", justify="right", style="white", width=9)
-    table.add_column("Now", justify="right", style="bold white", width=9)
-    table.add_column("Peak", justify="right", style="dim cyan", width=9)
-    table.add_column("Dev%", justify="right", width=8)
-    table.add_column("Chart", justify="center", width=14)
-    table.add_column("PnL%", justify="right", width=9)
-    table.add_column("Hold", justify="right", width=7)
-    table.add_column("Status", justify="center", width=16)
+    table.add_column("Market", style="bold cyan", width=26)
+    table.add_column("Entry $", justify="right", style="dim white", width=7)
+    table.add_column("Median $", justify="right", style="cyan", width=8)
+    table.add_column("Current $", justify="right", style="bold white", width=9)
+    table.add_column("Chart", justify="center", width=13)
+    table.add_column("Dev%", justify="right", width=7)
+    table.add_column("PnL%", justify="right", width=7)
+    table.add_column("Spread", justify="right", style="yellow", width=9)
+    table.add_column("Hold(m)", justify="right", style="dim", width=7)
+    table.add_column("Status", justify="center", width=14)
     
     for r in rows:
         pnl_color = "bold green" if r['pnl'] >= 10 else ("green" if r['pnl'] > 0 else "red")
         dev_color = "bold yellow" if abs(r['dev']) >= DEVIATION_THRESHOLD_PCT else "cyan"
-        hold_min = r['hold_min']
-        hold_str = f"{hold_min:.1f}m" if hold_min >= 1 else f"{int(hold_min * 60)}s"
+        
+        # Spread display
+        spread = r.get('spread', 0)
+        bid = r.get('bid', 0)
+        ask = r.get('ask', 0)
+        spread_str = f"${bid:.2f}-{ask:.2f}" if bid > 0 and ask > 0 else "N/A"
         
         table.add_row(
-            f"{get_sport_info(r['ticker'])} {r['title'][:20]}",
+            f"{r['title'][:26]}",
             f"${r['entry']:.2f}",
             f"${r['median']:.2f}",
             f"${r['now']:.2f}",
-            f"${r['peak']:.2f}",
-            f"[{dev_color}]{r['dev']:+.2f}%[/{dev_color}]",
             r['sparkline'],
+            f"[{dev_color}]{r['dev']:+.1f}%[/{dev_color}]",
             f"[{pnl_color}]{r['pnl']:+.1f}%[/{pnl_color}]",
-            hold_str,
+            spread_str,
+            f"{r['hold_min']:.1f}",
             r['status']
         )
     
-    return Panel(table, title=stats_header, subtitle=f"Updated: {datetime.datetime.now().strftime('%H:%M:%S')}", border_style="blue")
+    return Panel(table, title=stats_header, border_style="blue", padding=(0, 1))
 
 
 def main_loop():
@@ -580,7 +583,12 @@ def main_loop():
                     # Get sparkline
                     spark = get_sparkline(list(price_hist[ticker]))
                     
-                    # Determine status
+                    # Calculate bid-ask spread
+                    bid = market.yes_bid_dollars if market.yes_bid_dollars else 0
+                    ask = market.yes_ask_dollars if market.yes_ask_dollars else 0
+                    spread = ask - bid if bid > 0 else 0
+                    
+                    # Determine status with momentum indicator
                     if abs(dev_pct) >= DEVIATION_THRESHOLD_PCT:
                         status = "[bold yellow]⚠️ THRESHOLD[/bold yellow]" if dev_pct < 0 else "[bold green]✓ READY[/bold green]"
                     else:
@@ -588,7 +596,7 @@ def main_loop():
                     
                     rows.append({
                         "ticker": ticker,
-                        "title": market.title[:20],
+                        "title": market.title,
                         "entry": entry,
                         "now": current,
                         "median": med,
@@ -598,6 +606,9 @@ def main_loop():
                         "sparkline": spark,
                         "hold_min": hold_sec / 60.0,
                         "status": status,
+                        "spread": spread,
+                        "bid": bid,
+                        "ask": ask,
                     })
 
                 rows = sorted(rows, key=lambda x: x['pnl'], reverse=True)
